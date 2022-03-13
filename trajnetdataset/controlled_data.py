@@ -153,7 +153,7 @@ def generate_sf_trajectory(sim_scene, num_ped, sf_params=[0.5, 2.1, 0.3], end_ra
 
     return trajectories, count
 
-def generate_pygame_trajectory(scene_file, goal_file, end_range=1.0):
+def generate_pygame_trajectory(scene_file, goal_file, grp_file, num_grps, end_range=1.0):
     positions = []
     goals = []
     valid = False
@@ -161,13 +161,20 @@ def generate_pygame_trajectory(scene_file, goal_file, end_range=1.0):
     rows = rows.to_numpy()
     goal_rows = pd.read_csv(goal_file)
     goal_rows = goal_rows.to_numpy()
+    grp_rows = pd.read_csv(grp_file)
+    grp_rows = grp_rows.to_numpy()
+    
     num_ped = 0
     for x in rows[0][1:]:
         if x != -1:
             num_ped += 1
         else :
             break
+            
     reaching_goal_by_ped = [False] * num_ped
+    
+    
+    
 
     for ped in range(num_ped):
         goals.append((goal_rows[0][ped], goal_rows[1][ped]))
@@ -184,6 +191,17 @@ def generate_pygame_trajectory(scene_file, goal_file, end_range=1.0):
             if np.linalg.norm(np.array(position) - np.array(goals[ped - 1])) < end_range:
                 reaching_goal_by_ped[ped - 1] = True
         row_count += 2
+        
+        
+    for grpnum in range(num_grps):
+        no_of_ped_ingrp=len(data2[0][grpnum])
+        for ped_id in range(no_of_ped_ingrp):
+            if(data2[0][grpnum][ped_id].isdigit()):
+                ped_no=int(data2[0][grpnum][ped_id])
+                trajectories[ped_no - 1].append(grpnum)
+                #print(data2[0][grpnum][ped_id], grpnum)
+            
+            
     done = all(reaching_goal_by_ped)
     if done:
         valid = True
@@ -422,6 +440,8 @@ def main():
     parser.add_argument('--test', default=False)
     parser.add_argument('--mode', default=None,
                         help='Keep trajnet for trajnet dataset generation')
+    parser.add_argument('--num_grps', type=int, default=2,
+                        help='Number of groups')
 
     args = parser.parse_args()
 
@@ -430,6 +450,7 @@ def main():
     ##Decide the number of scenes & agents per scene
     num_scenes = args.num_scenes
     num_ped = args.num_ped
+    num_grps=args.num_grps
     mode = args.mode
     min_dist, react_time = 1.5, 1.5
 
@@ -488,7 +509,8 @@ def main():
         elif args.simulator == 'pygame':
             scene_file = 'scenes/scene' + str(i + 1) + '.csv'
             goal_file = 'goals/scene' + str(i + 1) + 'Goal.csv'
-            trajectories, goals, valid, num_ped = generate_pygame_trajectory(scene_file=scene_file, goal_file=goal_file)
+            grp_file = 'grps/scene' + str(i + 1) + 'grps.csv'
+            trajectories, goals, valid, num_ped = generate_pygame_trajectory(scene_file=scene_file, goal_file=goal_file, grp_file=grp_file, num_grps=num_grps)
 
         else:
             raise NotImplementedError

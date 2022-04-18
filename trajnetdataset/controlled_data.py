@@ -5,6 +5,9 @@ import argparse
 import os
 import itertools
 
+import csv
+import pandas as pd
+
 import numpy as np
 from numpy.linalg import norm
 import matplotlib.pyplot as plt
@@ -13,16 +16,16 @@ import rvo2
 import pickle
 import socialforce
 from socialforce.potentials import PedPedPotential
-from socialforce.fieldofview import FieldOfView
+from socialforce.field_of_view import FieldOfView
 
-def generate_circle_crossing(num_ped, sim=None, radius=4, mode=None): 
+def generate_circle_crossing(num_ped, sim=None, radius=7, mode=None): 
     positions = []
     goals = []
     speed = []
-    agent_list = []
+    center_list = []
     if mode == 'trajnet':
         radius = 10 ## 10 (TrajNet++)
-    for _ in range(num_ped):
+    for i in range(4):
         while True:
             angle = random.uniform(0, 1) * np.pi * 2
             # add some noise to simulate all the possible cases robot could meet with human
@@ -31,27 +34,83 @@ def generate_circle_crossing(num_ped, sim=None, radius=4, mode=None):
             px = radius * np.cos(angle) + px_noise
             py = radius * np.sin(angle) + py_noise
             collide = False
-            for agent in agent_list:
-                min_dist = 0.8
+            for center in center_list:
+                min_dist = 3.5
                 if mode == 'trajnet':
                     min_dist = 2    ## min_dist ~ 2*human.radius + discomfort_dist ## 2 (TrajNet++)
-                if norm((px - agent[0], py - agent[1])) < min_dist or \
-                        norm((px - agent[2], py - agent[3])) < min_dist:
+                if norm((px - center[0], py - center[1])) < min_dist:
                     collide = True
                     break
             if not collide:
                 break
-
-        positions.append((px, py))
-        goals.append((-px, -py))
+        
+        
+        # positions.append((px, py))
+        # goals.append((-px, -py))
+        # if sim is not None:
+        #     sim.addAgent((px, py))
+        # velocity = np.array([-2 * px, -2 * py])
+        # magnitude = np.linalg.norm(velocity)
+        # init_vel = 1 * velocity / magnitude if magnitude > 1 else velocity
+        # speed.append([init_vel[0], init_vel[1]])
+        center_list.append([px, py])
+    
+    for _ in range(5):
+        agent_list = []
+        while True:
+            angle1 = random.uniform(0, 1) * np.pi * 2
+            distance1 = random.uniform(0, 1)
+            x1 = distance1 * angle1 + center_list[0][0]
+            y1 = distance1 * angle1 + center_list[0][1]
+            angle2 = random.uniform(0, 1) * np.pi * 2
+            distance2 = random.uniform(0, 1)
+            x2 = distance2 * angle2 + center_list[1][0]
+            y2 = distance2 * angle2 + center_list[1][1]
+            for agent in agent_list:
+                min_dist = 0.8
+                if norm((x1 - agent[0], y1 - agent[1])) < min_dist or norm((x2 - agent[3], y2 - agent[4])) < min_dist:
+                    collide = True
+                    break
+            if not collide:
+                break
+        positions.append((x1, y1))
+        goals.append((x2, y2))
         if sim is not None:
-            sim.addAgent((px, py))
-        velocity = np.array([-2 * px, -2 * py])
+            sim.addAgent((x1, y1))
+        velocity = np.array([-2 * x1, -2 * y1])
         magnitude = np.linalg.norm(velocity)
         init_vel = 1 * velocity / magnitude if magnitude > 1 else velocity
         speed.append([init_vel[0], init_vel[1]])
-        agent_list.append([px, py, -px, -py])
-    trajectories = [[positions[i]] for i in range(num_ped)]
+        agent_list.append([x1, y1, x2, y2])
+
+    for _ in range(4):
+        agent_list = []
+        while True:
+            angle1 = random.uniform(0, 1) * np.pi * 2
+            distance1 = random.uniform(0, 1)
+            x1 = distance1 * angle1 + center_list[2][0]
+            y1 = distance1 * angle1 + center_list[2][1]
+            angle2 = random.uniform(0, 1) * np.pi * 2
+            distance2 = random.uniform(0, 1)
+            x2 = distance2 * angle2 + center_list[3][0]
+            y2 = distance2 * angle2 + center_list[3][1]
+            for agent in agent_list:
+                min_dist = 0.8
+                if norm((x1 - agent[0], y1 - agent[1])) < min_dist or norm((x2 - agent[3], y2 - agent[4])) < min_dist:
+                    collide = True
+                    breakare
+            if not collide:
+                break
+        positions.append((x1, y1))
+        goals.append((x2, y2))
+        if sim is not None:
+            sim.addAgent((x1, y1))
+        velocity = np.array([-2 * x1, -2 * y1])
+        magnitude = np.linalg.norm(velocity)
+        init_vel = 1 * velocity / magnitude if magnitude > 1 else velocity
+        speed.append([init_vel[0], init_vel[1]])
+        agent_list.append([x1, y1, x2, y2])
+    trajectories = [[positions[i]] for i in range(9)]
     return trajectories, positions, goals, speed
 
 def generate_orca_trajectory(sim_scene, num_ped, min_dist=3, react_time=1.5, end_range=1.0, mode=None):
@@ -103,7 +162,8 @@ def generate_orca_trajectory(sim_scene, num_ped, min_dist=3, react_time=1.5, end
                 sim.setAgentPrefVelocity(i, tuple(pref_vel.tolist()))
         done = all(reaching_goal)
 
-    if not done or not are_smoothes(trajectories):
+    # if not done or not are_smoothes(trajectories):
+    if not done:    
         valid = False
 
     return trajectories, valid, goals
@@ -150,6 +210,41 @@ def generate_sf_trajectory(sim_scene, num_ped, sf_params=[0.5, 2.1, 0.3], end_ra
 
     return trajectories, count
 
+def generate_pygame_trajectory(scene_file, goal_file, end_range=1.0):
+    positions = []
+    goals = []
+    valid = False
+    rows = pd.read_csv(scene_file)
+    rows = rows.to_numpy()
+    goal_rows = pd.read_csv(goal_file)
+    goal_rows = goal_rows.to_numpy()
+    num_ped = 0
+    for x in rows[0][1:]:
+        if x != -1:
+            num_ped += 1
+        else :
+            break
+    reaching_goal_by_ped = [False] * num_ped
+
+    for ped in range(num_ped):
+        goals.append((goal_rows[0][ped], goal_rows[1][ped]))
+
+    for ped in range(1, num_ped + 1):
+        positions.append((rows[0][ped], rows[1][ped]))
+    trajectories = [[positions[i]] for i in range(num_ped)]
+    row_count = 2
+    while row_count < len(rows):
+        for ped in range(1, num_ped + 1):
+            position = (rows[row_count][ped], rows[row_count + 1][ped])
+            if not reaching_goal_by_ped[ped - 1]:
+                trajectories[ped - 1].append(position)
+            if np.linalg.norm(np.array(position) - np.array(goals[ped - 1])) < end_range:
+                reaching_goal_by_ped[ped - 1] = True
+        row_count += 2
+    done = all(reaching_goal_by_ped)
+    if done:
+        valid = True
+    return trajectories, goals, valid
 
 def getAngle(a, b, c):
     """
@@ -373,7 +468,7 @@ def write_goals(filename, dict_dest):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--simulator', default='orca',
-                        choices=('orca', 'social_force'))
+                        choices=('orca', 'social_force', 'pygame'))
     parser.add_argument('--simulation_scene', default='circle_crossing',
                         choices=('circle_crossing'))
     parser.add_argument('--style', required=False, default=None)
@@ -419,7 +514,7 @@ def main():
 
     dict_dest = {}
 
-    for i in range(num_scenes):
+    for i in range(num_scenes): 
         if mode == 'trajnet':
             num_ped = random.choice([4, 5, 6]) ## TrajNet++
         ## Print every 10th scene
@@ -440,6 +535,12 @@ def main():
             trajectories, valid = generate_sf_trajectory(sim_scene=args.simulation_scene,
                                                          num_ped=num_ped,
                                                          sf_params=[0.5, 1.0, 0.1])
+        
+        elif args.simulator == 'pygame':
+            scene_file = 'scenes/scene' + str(i + 1) + '.csv'
+            goal_file = 'goals/scene' + str(i + 1) + 'Goal.csv'
+            trajectories, goals, valid = generate_pygame_trajectory(scene_file=scene_file, goal_file=goal_file)
+
         else:
             raise NotImplementedError
 
